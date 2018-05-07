@@ -1,0 +1,1 @@
+xcopy "%~dp0Helpers.psm1" "%USERPROFILE%\Documents\WindowsPowerShell\Modules\Helpers\"
