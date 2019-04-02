@@ -38,6 +38,7 @@ function Start-Watch
     Param([scriptblock]$ScriptBlock={Write-Warning "You did not supply a script block"}, [int32]$Interval=5)
     #Set lowest possible datetime, so that it will run script immediatly
     $Start = [DateTime]::MinValue
+    Clear-Host
     #Infinite loop, cancel require user intervention (CTRL+C)
     while($true)
     {
@@ -45,8 +46,9 @@ function Start-Watch
         if ([DateTime]::Now - $Start -ge [TimeSpan]::FromSeconds($Interval))
         {
             #Clear console and call function
+            $Res = $ScriptBlock.Invoke()
             Clear-Host
-            $ScriptBlock.Invoke()
+            $Res
             #Set new start time/last attempt
             $Start = [DateTime]::Now
         }
