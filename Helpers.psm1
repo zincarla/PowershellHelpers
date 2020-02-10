@@ -1,27 +1,5 @@
 <#
 .SYNOPSIS
-    Returns the result of two file paths joined together
-
-.DESCRIPTION
-    Returns the result of two file paths joined together
-
-.PARAMETER Path
-    Parent Path
-
-.PARAMETER ChildPath
-    Child path to be joined to path
-  
-.EXAMPLE
-    Join-SimplePath -Path "C:\" -ChildPath "\MyData.txt"
-#>
-function Join-SimplePath
-{
-    Param($Path, $ChildPath)
-    return [system.io.fileinfo]($a.TrimEnd('\', '/') + '\' + $b.TrimStart('\', '/')).FullName;
-}
-
-<#
-.SYNOPSIS
     Repetitively runs a script block to allow you to track changes in the command output. An example use would be for watching log inputs. Press CTRL+C to cancel script. It runs indefinitely.
 
 .PARAMETER ScriptBlock
@@ -308,4 +286,35 @@ function Split-File
     }
 }
 
-Export-ModuleMember -Function Split-File, Join-SimplePath, Start-Watch, Show-ArrayForm, Show-DeDupeForm, Select-Unique
+<#
+.SYNOPSIS
+    Search a directory of files for some regex pattern.
+ 
+.PARAMETER Path
+    Directory containing files to search
+ 
+.PARAMETER RegexPattern
+    Pattern to find
+
+.PARAMETER Include
+    Files to search, defaults to txt, log and lo_ (*.txt, *.log, *.lo_)
+ 
+.EXAMPLE
+    Search-Files -Path "C:\MyLogs" -RegexPattern "0x00000001"
+
+#>
+function Search-Files
+{
+    Param($Path, $RegexPattern, $Include=@("*.txt","*.log",".lo_"))
+    $Files = Get-ChildItem -Path $Path -Include $Include -Recurse
+    $ToReturn = @()
+    foreach ($File in $Files) {
+        $Content = Get-Content -Path $File.FullName -Raw
+        if ($Content -match $RegexPattern) {
+            $ToReturn += $File.FullName
+        }
+    }
+    return $ToReturn
+}
+
+Export-ModuleMember -Function Split-File, Search-Files, Start-Watch, Show-ArrayForm, Show-DeDupeForm, Select-Unique
