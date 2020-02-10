@@ -2,12 +2,6 @@
 These are a set of function generally usefull to have  on a day-to-day basis. When install.bat is run, this module will be placed in ``` %USERPROFILE%\Documents\WindowsPowerShell\Modules\Helpers\ ```. This will automatically import the module when a powershell window is opened allowing the user immediate access to those functions.
 
 ## Functions
-### Join-SimplePath
-Returns the result of two file paths joined together. This just takes care of ensuring the file seperator is not duplicated.
-
-```
-Join-SimplePath -Path "C:\" -ChildPath "\MyData.txt"
-```
 
 ### Start-Watch
 Repetitively runs a script block to allow you to track changes in the command output. An example use would be for watching log inputs. Press CTRL+C to cancel script. It runs indefinitely.
