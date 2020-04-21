@@ -317,4 +317,166 @@ function Search-Files
     return $ToReturn
 }
 
-Export-ModuleMember -Function Split-File, Search-Files, Start-Watch, Show-ArrayForm, Show-DeDupeForm, Select-Unique
+<#
+.SYNOPSIS
+    Recursively hashes files in an array and returns results as an array
+.PARAMETER Path
+    Path to search through
+.PARAMETER IgnoreEmptyDirectories
+    If set, will not report on directories that are empty
+  
+.EXAMPLE
+    Get-DirectoryHashArray -Path C:\Users -IgnoreEmptyDirectories
+#>
+function Get-DirectoryHashArray {
+    Param($Path, [switch]$IgnoreEmptyDirectories)
+    #Cleanup and root path
+    $Path = [System.IO.Path]::GetFullPath($Path).ToUpper()
+    if (-not $Path.EndsWith("\")) {
+        $Path = $Path+"\"
+    }
+
+    #Store results in this
+    $Results = @()
+
+    Write-Progress -Activity "Searching $Path" -Status "Files" -PercentComplete 0
+    $Files = Get-ChildItem -Path $Path -Recurse -File
+    Write-Progress -Activity "Searching $Path" -Status "Folders" -PercentComplete 33
+    if ($IgnoreEmptyDirectories) {
+        $Folders = $Files | ForEach-Object {$_.Directory}
+    } else {
+        $Folders = Get-ChildItem -Path $Path -Recurse -Directory        
+    }
+
+    Write-Progress -Activity "Searching $Path" -Status "Writing Folders to results" -PercentComplete 66
+    #Log each directory
+    foreach ($Folder in $Folders) {
+        $Results += New-Object -TypeName PSObject -Property @{Type="Directory"; Path=$Folder.FullName.ToUpper().Replace($Path, ""); Hash=""}
+    }
+    Write-Progress -Activity "Searching $Path" -Completed
+
+    $I=0
+    #File results
+    foreach ($File in $Files) {
+        #Cleanup path for report
+        $FilePath = $File.FullName.ToUpper().Replace($Path, "")
+
+        Write-Progress -Activity "Hashing files from $Path" -Status "$FilePath" -PercentComplete ($I*100/$Files.Length)
+        $Hash = Get-FileHash -Path $File.FullName -Algorithm SHA256
+        
+        $Results += New-Object -TypeName PSObject -Property @{Type="File"; Path=$FilePath; Hash=$Hash.Hash}
+        $I++;
+    }
+
+    return $Results
+}
+
+<#
+.SYNOPSIS
+    Compares two file hash arrays and reports the differences.
+.PARAMETER OldHashArray
+    The original results as returned from Get-DirectoryHashArray
+.PARAMETER NewHashArray
+    New set of results to compare againt OldHashArray
+.PARAMETER VerboseReport
+    Reports on files/directories that are the same vs just the differences
+  
+.EXAMPLE
+    Compare-HashArrays -OldHashArray $OldArray -NewHashArray $NewArray
+#>
+function Compare-HashArrays {
+    Param([Alias("HashArrayA", "OriginalHashArray")]$OldHashArray, [Alias("HashArrayB")]$NewHashArray, [switch]$VerboseReport)
+    #Store results in this
+    $Results = @()
+
+    #Build some hashtables to speed up comparisons
+    Write-Progress -Activity "Optimizing Data" -PercentComplete ($I*100/($OldHashArray.Length+$NewHashArray.Length));
+    $OldDirectoryHashTable= @{}
+    $NewDirectoryHashTable = @{}
+    $OldFileHashTable = @{}
+    $NewFileHashTable = @{}
+
+    foreach ($OldHash in $OldHashArray) {
+        Write-Progress -Activity "Indexing Data" -Status "OldHashArray" -PercentComplete ($I*100/($OldHashArray.Length+$NewHashArray.Length));
+        $I++;
+        if ($_.Type -eq "Directory") {
+            $OldDirectoryHashTable.Add($OldHash.Path,$OldHash)
+        } else {
+            $OldFileHashTable.Add($OldHash.Path,$OldHash)
+        }
+    }
+    foreach ($NewHash in $NewHashArray) {
+        Write-Progress -Activity "Indexing Data" -Status "NewHashArray" -PercentComplete ($I*100/($OldHashArray.Length+$NewHashArray.Length));
+        $I++;
+        if ($_.Type -eq "Directory") {
+            $NewDirectoryHashTable.Add($NewHash.Path,$NewHash)
+        } else {
+            $NewFileHashTable.Add($NewHash.Path,$NewHash)
+        }
+    }
+
+    Write-Progress -Activity "Comparing Arrays"
+    #Verify Directories
+    $I=0;
+    foreach ($HashItemKey in $OldDirectoryHashTable.Keys) {
+        $HashItem = $OldDirectoryHashTable[$HashItemKey]
+        Write-Progress -Activity "Comparing Arrays" -Status "Directories in old vs new" -CurrentOperation "$($I*100/($OldDirectoryHashTable.Count+$NewDirectoryHashTable.Count))%" -PercentComplete ($I*100/($OldDirectoryHashTable.Count+$NewDirectoryHashTable.Count))
+        $I++
+
+        $Found = $NewDirectoryHashTable.ContainsKey($HashItemKey)
+        if ($Found -eq $false) {
+            $Results+= New-Object -TypeName PSObject -Property @{Path=$HashItem.Path; Type=$HashItem.Type; InOld=$true; InNew=$false; HashMatch=""}
+        } elseif ($VerboseReport) {
+            $Results+= New-Object -TypeName PSObject -Property @{Path=$HashItem.Path; Type=$HashItem.Type; InOld=$true; InNew=$true; HashMatch=""}
+        }
+    }
+    foreach ($HashItemKey in $NewDirectoryHashTable.Keys) {
+        $HashItem = $NewDirectoryHashTable[$HashItemKey]
+
+        Write-Progress -Activity "Comparing Arrays" -Status "Directories in new vs old" -CurrentOperation "$($I*100/($OldDirectoryHashTable.Count+$NewDirectoryHashTable.Count))%" -PercentComplete ($I*100/($OldDirectoryHashTable.Count+$NewDirectoryHashTable.Count))
+        $I++
+
+        $Found = $OldDirectoryHashTable.ContainsKey($HashItemKey)
+        if ($Found -eq $false) {
+            $Results+= New-Object -TypeName PSObject -Property @{Path=$HashItem.Path; Type=$HashItem.Type; InOld=$false; InNew=$true; HashMatch=""}
+        }
+    }
+    
+    $I=0; #Reset progress
+    #Verify Files
+    foreach ($HashItem in $OldHashArray) {
+        Write-Progress -Activity "Comparing Arrays" -Status "Files in old vs new" -CurrentOperation "$($I*100/($OldHashArray.Length+$NewHashArray.Length))%" -PercentComplete ($I*100/($OldHashArray.Length+$NewHashArray.Length))
+        $I++
+        if ($HashItem.Type -eq "File") {
+            $FoundFile = $null
+
+            if ($NewFileHashTable.ContainsKey($HashItem.Path)) {
+                $FoundFile = $NewFileHashTable[$HashItem.Path]
+            }
+            if ($FoundFile -ne $null -and $FoundFile.Hash -eq $HashItem.Hash) {
+                if ($VerboseReport) {
+                    $Results+= New-Object -TypeName PSObject -Property @{Path=$HashItem.Path; Type=$HashItem.Type; InOld=$true; InNew=$true; HashMatch=$true}
+                }
+            } elseif ($FoundFile -ne $null) {
+                $Results+= New-Object -TypeName PSObject -Property @{Path=$HashItem.Path; Type=$HashItem.Type; InOld=$true; InNew=$true; HashMatch=$false}
+            } else {
+                $Results+= New-Object -TypeName PSObject -Property @{Path=$HashItem.Path; Type=$HashItem.Type; InOld=$true; InNew=$false; HashMatch=$false}
+            }
+        }
+    }
+    foreach ($HashItem in $NewHashArray) {
+        Write-Progress -Activity "Comparing Arrays" -Status "Files in new vs old" -CurrentOperation "$($I*100/($OldHashArray.Length+$NewHashArray.Length))%" -PercentComplete ($I*100/($OldHashArray.Length+$NewHashArray.Length))
+        $I++
+        if ($HashItem.Type -eq "File") {
+            $FoundFile = $OldFileHashTable.ContainsKey($HashItem.Path)
+            if ($FoundFile -eq $null) {
+                $Results+= New-Object -TypeName PSObject -Property @{Path=$HashItem.Path; Type=$HashItem.Type; InOld=$true; InNew=$false; HashMatch=$false}
+            }
+        }
+    }
+
+    return $Results
+}
+
+
+Export-ModuleMember -Function Split-File, Search-Files, Start-Watch, Show-ArrayForm, Show-DeDupeForm, Select-Unique, Get-DirectoryHashArray, Compare-HashTables

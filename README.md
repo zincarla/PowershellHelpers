@@ -46,3 +46,17 @@ This example takes a list of files named SomeSplitFile.zip.0, SomeSplitFile.zip.
 ```
 Split-File -LoadFile "C:\SomeSplitFile.zip.0" -SaveFile "C:\OriginalFile.zip" -Restore
 ```
+
+### Get-DirectoryHashArray
+Recursively hashes files in an array and returns results as an array. This can then be exported and loaded later with Export-CSV, Import-CSV
+
+```
+Get-DirectoryHashArray -Path C:\Users -IgnoreEmptyDirectories
+```
+
+### Compare-HashArrays
+Compares two file hash arrays and reports the differences.
+
+```
+Compare-HashArrays -OldHashArray $OldArray -NewHashArray $NewArray
+```
